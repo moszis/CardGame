@@ -1,0 +1,42 @@
+
+<!doctype html>
+<html>
+    <head>
+        <script src="code.jquery.com/jquery-1.7.2.min.js"></script>
+        <script src="js/socket.io.js"></script>
+        <script>
+            var socket = io.connect('71.235.195.126:8124');
+            
+            socket.emit('getAllCards', {data: 'Need Cards Dude!!'});
+            
+            socket.on('welcome', function(data) {
+                document.write('....'+data.message+'<br/>');
+               // $('#messages').append('<li>' + data.message + '</li>');
+                socket.emit('i am client', {data: 'got welcome message homes!'});
+               // socket.emit('getAllCards', {data: 'Need Cards Dude!!'});
+            });
+            
+            socket.on('time', function(data) {
+                document.write('....'+data.time+'<br/>');
+                console.log(data);
+             //   $('#messages').append('<li>' + data.time + '</li>');
+                socket.emit('i am client', {data: 'thanks for the time bro!'});
+            });
+            
+            socket.on('AllCards', function(data) {
+                document.write('.... Got CArds!!<br/>'+data.cards);
+                console.log(data);
+             //   $('#messages').append('<li>' + data.time + '</li>');
+                socket.emit('i am client', {data: 'thanks for the time bro!'});
+            });
+            
+            socket.on('error', function() { console.error(arguments) });
+            socket.on('message', function() { console.log(arguments) });
+        </script>
+    </head>
+    <body>
+        <ul id="messages"></ul>
+    </body>
+</html>
+
+

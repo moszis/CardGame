@@ -1,0 +1,368 @@
+<html>
+  <head>
+    <title>Card Game with Pixie</title>
+    <script src="http://code.jquery.com/jquery-2.1.1.min.js"></script>
+    <script src="js/pixi.js"></script>
+    <script src="js/socket.io.js"></script>
+    
+    <script src="js/Client/CardSlots.js"></script>
+    <script src="js/Client/DataAccess.js"></script>
+    <script src="js/Client/PlayerData.js"></script>
+    <script src="js/Client/Utils.js"></script>
+    <script src="js/Client/CardDraw.js"></script>
+    <script src="js/Client/Card.js"></script>
+    <script src="js/Client/MobData.js"></script>
+    <script src="js/Client/Combat.js"></script>
+    <script src="js/Client/MobAI/MobAI.js"></script>
+    <script src="js/Client/MobAI/MobAIAbilities.js"></script>
+    <script src="js/Client/MobAI/MobAITargetSelection.js"></script>
+    <script src="js/Client/Animations.js"></script>
+    <script src="js/Client/Abilities.js"></script>
+  </head>
+  
+<body>
+
+    <script type="text/javascript">
+
+    //setting user statick now
+    var userID = 1;
+
+    
+    var windowHeight = window.innerHeight;
+    var windowWidth  = window.innerWidth;
+    
+    var abilitieIconHeight = 30;
+    var abilitieIconWidth  = 30;
+    
+    //Game Objects
+    var playerCards       = new Array();
+    var mobCards          = new Array();
+    var cardSlots         = new Array();
+    //Contains all abilities with keys as ability ID
+    var abilitieMap       = new Array();
+    var cardSlotObjects   = [];
+    var playerCardOjbects = [];
+    var mobCardOjbects    = [];
+    //var resourceObjects   = [];
+    var resourceMap       = new Array();
+
+    //MISC
+    var mouseAtSlot     = null;
+    var highlightedSlot = -1;
+    var isDragging      = false;
+    var draggedObject   = null;
+    
+         
+    var backGroundImageSrc = "assets/images/combatBG3.png";
+    var endTurnButtonSrc   = "assets/images/EndTurn.png";
+    var arrowNorthSrc      = "assets/images/arrow.png";
+    var arrowNorthEastSrc  = "assets/images/arrowNorthEast.png";
+    var arrowNorthWestSrc  = "assets/images/arrowNorthWest.png";
+    var arrowStuckNorthEastSrc  = "assets/images/arrowStuck.png";
+    
+    var targetRed               = "assets/images/targetRed.jpg";
+   
+   
+	// create an new instance of a pixi stage
+	var stage = new PIXI.Stage(0x66FF99);
+
+	// create a renderer instance
+	var renderer = new PIXI.autoDetectRenderer(windowWidth, windowHeight);//autoDetectRenderer(400, 300);
+
+	// add the renderer view element to the DOM
+	document.body.appendChild(renderer.view);
+        
+        //this makes the game fit perfectly into window without offset
+	renderer.view.style.position = "absolute";
+	renderer.view.style.top = "0px";
+	renderer.view.style.left = "0px";
+
+	requestAnimFrame( animate );
+
+
+        addBackGround();
+        addEndTurnButton();
+        addArrows();
+
+
+	function animate() {
+
+	   requestAnimFrame( animate );
+
+	   // render the stage
+	   renderer.render(stage);
+	}
+        
+
+        generateRelativeSizes();
+        genCardSlots();
+        drawCardSlots();
+
+        
+        function addBackGround(){
+                    // create a texture from an image path
+            var texture = PIXI.Texture.fromImage(backGroundImageSrc);
+            // create a new Sprite using the texture
+            var background = new PIXI.Sprite(texture);
+
+            // center the sprites anchor point
+            background.anchor.x = 0;
+            background.anchor.y = 0;
+
+            // move the sprite t the center of the screen
+            background.position.x = 0;
+            background.position.y = 0;
+
+            background.width  = windowWidth;
+            background.height = windowHeight;
+
+            stage.addChild(background);
+            
+            var x = resourceMap.length;
+            resourceMap[x]       = background;
+            resourceMap[x].name  = "background";
+            resourceMap[x].id    = x;
+        }
+     
+    
+    
+        function addEndTurnButton(){
+            //alert("here"+endTurnButtonSrc);
+            var endTurnButton = PIXI.Sprite.fromImage(endTurnButtonSrc);
+
+            endTurnButton.interactive = true;
+            endTurnButton.buttonMode = true;
+
+            endTurnButton.height = 50;
+            endTurnButton.width  = 100;
+            endTurnButton.position.x = windowWidth - windowWidth/3;
+            endTurnButton.position.y = windowHeight/2;
+            
+            stage.addChildAt(endTurnButton, 1);
+            
+            var x = resourceMap.length;
+            resourceMap[x]       = endTurnButton;
+            resourceMap[x].name  = "endTurnButton";
+            resourceMap[x].id    = x;
+            
+            endTurnButton.mousedown = endTurnButton.touchstart = function(data)
+            {
+                endTurn();
+            };
+        }
+        
+        
+        function addArrows(){
+  
+            var arrowNorth          = PIXI.Sprite.fromImage(arrowNorthSrc);
+            var arrowNorthEast      = PIXI.Sprite.fromImage(arrowNorthEastSrc);
+            var arrowNorthWest      = PIXI.Sprite.fromImage(arrowNorthWestSrc);
+            var arrowStuckNorthEast = PIXI.Sprite.fromImage(arrowStuckNorthEastSrc);
+
+            arrowNorth.interactive = false;
+            arrowNorth.buttonMode  = false;
+            arrowNorth.visible     = false;
+            arrowNorth.height      = 120;
+            arrowNorth.width       = 120;           
+            arrowNorth.position.x  = 200;
+            arrowNorth.position.y  = 200;
+            arrowNorth.arrowTipX   = 20;
+            
+            arrowNorthWest.interactive = false;
+            arrowNorthWest.buttonMode  = false;
+            arrowNorthWest.visible     = false;
+            arrowNorthWest.height      = 120;
+            arrowNorthWest.width       = 120;           
+            arrowNorthWest.position.x  = 200;
+            arrowNorthWest.position.y  = 200;
+            arrowNorthWest.arrowTipX   = 0;
+            
+            arrowNorthEast.interactive = false;
+            arrowNorthEast.buttonMode  = false;
+            arrowNorthEast.visible     = false;
+            arrowNorthEast.height      = 120;
+            arrowNorthEast.width       = 120;           
+            arrowNorthEast.position.x  = 200;
+            arrowNorthEast.position.y  = 200;
+            arrowNorthEast.arrowTipX   = 50;
+            
+            arrowStuckNorthEast.interactive = false;
+            arrowStuckNorthEast.buttonMode  = false;
+            arrowStuckNorthEast.visible     = false;
+            arrowStuckNorthEast.height      = 120;
+            arrowStuckNorthEast.width       = 120;           
+            arrowStuckNorthEast.position.x  = 200;
+            arrowStuckNorthEast.position.y  = 200;
+            arrowStuckNorthEast.arrowTipX   = 0;
+            
+            
+            stage.addChild(arrowNorth);
+            stage.addChild(arrowNorthEast);
+            stage.addChild(arrowNorthWest);
+            stage.addChild(arrowStuckNorthEast);
+            
+            
+            var x = resourceMap.length;
+            resourceMap[x]       = arrowNorth;
+            resourceMap[x].name  = "arrowNorth";
+            resourceMap[x].id    = x;
+            
+            x = resourceMap.length;
+            resourceMap[x]       = arrowNorthEast;
+            resourceMap[x].name  = "arrowNorthEast";
+            resourceMap[x].id    = x;
+            
+            x = resourceMap.length;
+            resourceMap[x]       = arrowNorthWest;
+            resourceMap[x].name  = "arrowNorthWest";
+            resourceMap[x].id    = x;
+            
+            x = resourceMap.length;
+            resourceMap[x]       = arrowStuckNorthEast;
+            resourceMap[x].name  = "arrowStuckNorthEast";
+            resourceMap[x].id    = x;
+        }
+
+        
+        function drawCardSlot(slotID) {
+
+            var graphics = new PIXI.Graphics();
+
+            // set the line style to have a width of 5 and set the color to red
+            graphics.lineStyle(10, 0x000000);
+            graphics.buttonMode = true;
+            //graphics.setInteractive(true);
+            graphics.beginFill(0xFFFFFF);
+            graphics.drawRect(cardSlots[slotID].x, cardSlots[slotID].y, cardSlotWidth, cardSlotHeight);
+
+            //graphics.hitArea = new PIXI.Rectangle(cardSlots[slotID].x, cardSlots[slotID].y, cardSlotWidth, cardSlotHeight);
+            //graphics.mouseover = function(e) {
+                //Not useful at this moment.  Moving card over is not considered mouse over.
+                //Possibly can utilize for tooltips about that slot.
+                //But will need to figure out how to identify each of them separatelly
+            //};
+
+            graphics.alpha = 0.6;
+            
+            cardSlotObjects[slotID] = graphics;
+                          
+            stage.addChild(graphics);
+     
+        }
+
+        
+        
+        
+        function drawCardActionOptions(){
+            for(x=0; x < playerCards.length; x++){
+                var cardAbilities = playerCards[x].abilityList.split(',');
+                for(a=0; a < cardAbilities.length; a++){
+                    drawAbility(cardAbilities[a], x);
+                }
+            }
+        }
+      
+      
+      
+      
+        function loadAbilityIcon(abilityID){
+
+            var image = PIXI.Texture.fromImage(abilitieMap[abilityID].imgSrc);
+            var abilityIcon = new PIXI.Sprite(image);
+            abilityIcon.anchor.x = 0;
+            abilityIcon.anchor.y = 0;
+            abilityIcon.position.x = 0;
+            abilityIcon.position.y = 0;
+            abilityIcon.width  = abilitieIconWidth;
+            abilityIcon.height = abilitieIconHeight;
+            abilityIcon.visible = false;
+
+            stage.addChild(abilityIcon);
+
+            abilitieMap[abilityID].obj = abilityIcon;
+        }
+        
+        
+        
+        
+        
+         
+        
+        
+
+               
+        
+        function switchCardSlots(cardID1, cardID2){
+            var card1Slot = playerCards[cardID1].slotID;
+            var card2Slot = playerCards[cardID2].slotID;
+            
+            playerCardOjbects[cardID1].position.x = cardSlots[card2Slot].x;
+            playerCardOjbects[cardID1].position.y = cardSlots[card2Slot].y;
+
+            playerCardOjbects[cardID2].position.x = cardSlots[card1Slot].x;
+            playerCardOjbects[cardID2].position.y = cardSlots[card1Slot].y;
+            
+            cardSlots[card1Slot].cardID = cardID2;
+            cardSlots[card2Slot].cardID = cardID1;
+            
+            playerCards[cardID1].slotID = card2Slot;
+            playerCards[cardID2].slotID = card1Slot;
+        }
+ 
+        
+        function generateRelativeSizes(){
+            cardSlotHeight = 175;
+            cardSlotWidth  = 120;
+            hSpaceBetweenCards = 10;
+            vSpaceBetweenCards = 30;
+            spaceAboveStaging = 60;
+            spaceFromTop = 30;
+            spaceFromBottom = 30;
+            abilitieIconHeight = 30;
+            abilitieIconWidth  = 30;
+            cardImageHeight = 580;
+            cardImageWidth  = 430;
+           
+        }
+ 
+
+        function slotAllowed(slotID, card){
+           //check if this card is allowed to be moved to this slot
+           //Currrently only checking if slot is flagged is allowed for currently moving card
+           //returns boolean
+            if(cardSlots[slotID].allowed === true){
+               return true;
+            }else{
+               return false;
+            }
+        }
+        
+        
+        
+        function hideAllCardAbilities(){
+            for (var key in abilitieMap) {
+              if (abilitieMap.hasOwnProperty(key)) {
+                abilitieMap[key].obj.visible = false;
+              }
+            }
+        }
+        
+        function hideCardActionOptions(cardID){
+           // attackIcon.visible = false;
+           // defendIcon.visible = false;
+           // alert("hide card abilities "+cardID);
+
+        }
+        
+        
+        //Generic function to display card action if necessary [not sure how to handle cards with more than 3 abilities)
+        function displayCardAction(cardID, actionID){
+            
+        }
+        
+       
+        
+    </script>
+ 
+    </body>
+</html>

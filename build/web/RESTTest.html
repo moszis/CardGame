@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<!--
+To change this license header, choose License Headers in Project Properties.
+To change this template file, choose Tools | Templates
+and open the template in the editor.
+-->
+<html>
+    <head>
+       <script src="code.jquery.com/jquery-1.7.2.min.js"></script>
+    </head>
+    <body>
+        <script>
+   /*         
+$.ajax({ 
+   type: "GET",
+   dataType: "json",
+   url: "http://localhost:8124/",
+   success: function(data){        
+     alert(data);
+   }
+});
+*/
+alert("before ajax");
+
+$.ajax({
+    url: "http://query.yahooapis.com/v1/public/yql",
+ 
+    // the name of the callback parameter, as specified by the YQL service
+    jsonp: "callback",
+ 
+    // tell jQuery we're expecting JSONP
+    dataType: "jsonp",
+ 
+    // tell YQL what we want and that we want JSON
+    data: {
+        q: "select title,abstract,url from search.news where query=\"cat\"",
+        format: "json"
+    },
+ 
+    // work with the response
+    success: function( response ) {
+        console.log( response ); // server response
+    }
+});
+
+
+/*
+var response;
+ 
+$.get( "http://www.google.com", function( r ) {
+    response = r;
+});
+ 
+console.log( response );
+
+
+
+$.ajax({ 
+   type: "GET",
+   dataType: "jsonp",
+   url: "127.0.0.1:8124",
+   success: function(){        
+     alert("data");
+   },
+   error: function(){
+       alert("error");
+   }
+});
+
+alert("wtf??");
+
+  $.get("127.0.0.1:8124/", function(){
+    //alert("Data: " + data + "\nStatus: " + status);
+    alert("something");
+  });
+*/
+        </script>
+        <div>TODO write content</div>
+    </body>
+</html>

@@ -1,0 +1,495 @@
+<html>
+  <head>
+    <title>Card Game with Phaser</title>
+    <script src="code.jquery.com/jquery-1.7.2.min.js"></script>
+    <script src="js/phaser.min.js"></script>
+    <script src="js/socket.io.js"></script>
+  </head>
+  
+<body>
+
+    <script type="text/javascript">
+
+(function () {
+
+	var game = new Phaser.Game(window.innerWidth, window.innerHeight,
+                Phaser.AUTO, // The type of graphic rendering to use 
+                // (AUTO tells Phaser to detect if WebGL is supported.
+                //  If not, it will default to Canvas.)
+                'phaser-game', // The parent element of the game
+                {preload: preload, create: create, update: update});
+ 
+//socket related
+var socketAddress = '71.235.195.126';
+var socketPort    = '8124';
+
+//setting user statick now
+var userID = 1;
+
+//Default Definition of slot layouts
+//May be overwritten in generateRelativeSizes function
+var cardSlotHeight = 140;
+var cardSlotWidth  = 90;
+var hSpaceBetweenCards = 10;
+var vSpaceBetweenCards = 10;
+var spaceFromTop = 30;
+var spaceFromBottom = 30;
+var spaceAboveStaging = 60;
+
+//Game Objects
+var playerCards = new Array();
+var cardSlots   = new Array();
+
+//MISC
+var mouseAtSlot     = null;
+var highlightedSlot = -1;
+
+
+var isDragging = false;
+var draggedObject = null;
+
+          
+var cardsLoaded = false;           
+   
+        generateRelativeSizes();
+        genCardSlots();
+                    
+        var socket = io.connect(socketAddress+':'+socketPort);
+        socket.emit('getAllCards', {userID: 1});  
+            
+        socket.on('AllCards', function(data) {
+            
+            socket.emit('i am client', {data: 'card Object received '+data.cards});
+            genCardObjects();
+             //preload();
+       
+            game.load.onFileComplete.add(updateProgressBar, this);
+            
+            
+            for(x=0; x < playerCards.length; x++){
+                
+                 alert("inside loop");
+                 var thisImage = new Image();
+                 thisImage.src = playerCards[x].imgSrc;
+                 thisImage.name = playerCards[x].name;
+                 thisImage.id   = x;
+                 thisImage.onload = function(){
+                     alert("loaded"+this.src);
+                     drawCard(this.id);
+                 };
+
+                //game.load.onLoadComplete.addOnce(updateProgressBar);
+            }
+
+        });
+ 
+
+        
+        function preload() {
+            //alert("order test preload()");
+            generateRelativeSizes();
+            //game.load.onFileComplete.add(updateProgressBar, this);
+            game.load.image("background", "assets/images/castle.jpg");
+
+            genCardSlots();
+   /*         
+            genCardObjects();
+
+
+            for(x=0; x < playerCards.length; x++){
+              //alert(playerCards[x].name);
+             // var thisImage = new Image();
+              game.load.image(playerCards[x].name, playerCards[x].imgSrc, cardSlotWidth, cardSlotHeight);
+              //thisImage.onLoadComplete.addOnce(updateProgressBar);
+                
+            }
+           
+*/
+
+        }
+
+        function updateProgressBar(){
+     alert("one file complete");
+ }
+ 
+ 
+        function create() {
+
+            background = game.add.sprite(0, 0, "background");
+            background.height = game.height;
+            background.width = game.width;
+             
+              
+            drawCardSlots();
+
+            //drawCards();
+     
+        }
+ 
+        function update() {
+ 
+            if(isDragging){
+                 identifyCardSlot();
+                 
+                 if(mouseAtSlot >= 0){
+                   highlightCardSlot();
+                }               
+             }
+        }
+        
+        function drawCardSlots() {
+                  
+           var shape = game.add.graphics();
+           shape.lineStyle(5, 0x000000, 1);
+           
+           for(x=0; x < 25; x++){    
+             shape.drawRect(cardSlots[x].x, cardSlots[x].y, cardSlotWidth, cardSlotHeight);
+           } 
+       }       
+         
+        function drawCard(cardID){
+             
+                var slot = playerCards[cardID].slotID;
+
+                if (slot !== null) {
+                    var card = game.add.sprite(cardSlots[slot].x, cardSlots[slot].y, playerCards[cardID].name); 
+                    card.height = cardSlotHeight;
+                    card.width  = cardSlotWidth;
+                    card.inputEnabled = true;
+                    card.input.enableDrag(true);
+                    card.number = cardID;
+                    
+                    alert("drawn card "+playerCards[cardID].name);
+                    
+                    card.events.onDragStart.add(startDrag, this);
+                    card.events.onDragStop.add(stopDrag, this);
+
+                   // card.loadTexture(playerCards[cardID].name);
+                } 
+        } 
+        
+        
+        function drawCards(){
+
+            for(x=0; x < playerCards.length; x++){
+
+                var slot = playerCards[x].slotID;
+
+                if (slot !== null) {
+                   
+                    var card = game.add.sprite(cardSlots[slot].x, cardSlots[slot].y, playerCards[x].name); 
+                    card.height = cardSlotHeight;
+                    card.width  = cardSlotWidth;
+                    card.inputEnabled = true;
+                    card.input.enableDrag(true);
+                    card.number = x;
+                    
+                    card.events.onDragStart.add(startDrag, this);
+                    card.events.onDragStop.add(stopDrag, this);
+
+                }  
+
+            }  
+            
+        }
+        
+        function startDrag(card){
+
+              game.world.bringToTop(card);
+              isDragging = true;
+              draggedObject = card;
+              
+        }
+        
+        function stopDrag(card){
+         
+              identifyCardSlot();
+                          
+              if(mouseAtSlot >= 0 && mouseAtSlot !== playerCards[card.number].slotID){
+                 var slotID = mouseAtSlot;
+              }else{
+                 var slotID = playerCards[card.number].slotID;
+              }
+              
+              snapCardtoSlot(slotID, card);
+              isDragging = false;
+
+        }
+        
+        
+        function genCardObjects(cards){
+
+            //get Cards from database
+            //will need to decide on how to limit server requests and maintain security
+            //create player and enemy card object arrays with card to slot association.
+
+            cardInfo = {
+                id : 1,
+                name : "Peasant",
+                slotID : 20,
+                attack: 1,
+                defence : 1,
+                health : 1,
+                imgSrc : "assets/images/cards/peasant.png"
+            }
+            playerCards[0]= cardInfo;
+
+
+            cardInfo = {
+                id : 2,
+                name : "Pikeman",
+                slotID : 21,
+                attack: 5,
+                defence : 5,
+                health : 5,
+                imgSrc : "assets/images/cards/pikeman.png"
+            }  
+            playerCards[1] = cardInfo;
+
+        }
+           
+        function genCardSlots(){
+               
+            var cardSlot = new Object();
+            var slotX = game.width / 2 - (cardSlotWidth * 2.5 + hSpaceBetweenCards *2);
+            var slotY = spaceFromTop;
+            var row   = 1;
+            var col   = 1;
+            var id    = 0;
+            var side  = "top";
+            
+            //Generate Opponent Def Row
+            for(x=0; x < 5; x++){
+                
+                cardSlot = {
+                    x : slotX,
+                    y : slotY,
+                    name :side+"R"+row+"C"+col,
+                    id : id,
+                    row : row,
+                    col : col
+                }
+                cardSlots[id] = cardSlot;
+                
+                slotX = slotX + cardSlotWidth + hSpaceBetweenCards,
+                id++;
+                col++;
+            }  
+            
+            
+            
+            //Generate Generate Opponent Front Row
+            slotX = cardSlots[0].x;
+            slotY = slotY + cardSlotHeight + vSpaceBetweenCards;
+            row   = 2;
+            col   = 1;
+            for(x=5; x < 10; x++){
+                
+                cardSlot = {
+                    x : slotX,
+                    y : slotY,
+                    name :side+"R"+row+"C"+col,
+                    id : id,
+                    row : row,
+                    col : col
+                }
+                cardSlots[id] = cardSlot;
+                
+                slotX = slotX + cardSlotWidth + hSpaceBetweenCards,
+                id++;
+                col++;
+            }  
+            
+            
+            //Generate Player Front Row
+            slotX = cardSlots[0].x;
+            slotY = game.height - cardSlotHeight*3 - spaceFromBottom - vSpaceBetweenCards - spaceAboveStaging;
+            row   = 3;
+            col   = 1;
+            side  = "bottom";
+            
+            for(x=10; x < 15; x++){
+                
+                cardSlot = {
+                    x : slotX,
+                    y : slotY,
+                    name :side+"R"+row+"C"+col,
+                    id : id,
+                    row : row,
+                    col : col
+                }
+                cardSlots[id] = cardSlot;
+                
+                slotX = slotX + cardSlotWidth + hSpaceBetweenCards,
+                id++;
+                col++;
+            } 
+            
+         
+            //Generate Player Back Row
+            slotX = cardSlots[0].x;
+            slotY = game.height - cardSlotHeight*2 - spaceFromBottom - spaceAboveStaging;
+            row   = 4;
+            col   = 1;
+ 
+            
+            for(x=15; x < 20; x++){
+                
+                cardSlot = {
+                    x : slotX,
+                    y : slotY,
+                    name :side+"R"+row+"C"+col,
+                    id : id,
+                    row : row,
+                    col : col
+                }
+                cardSlots[id] = cardSlot;
+                
+                slotX = slotX + cardSlotWidth + hSpaceBetweenCards,
+                id++;
+                col++;
+            } 
+ 
+                    
+ 
+         
+            //Generate Player Staging Row
+            slotX = cardSlots[0].x;
+            slotY = game.height - cardSlotHeight - spaceFromBottom;
+            row   = 5;
+            col   = 1;
+
+            
+            for(x=20; x < 25; x++){
+                
+                cardSlot = {
+                    x : slotX,
+                    y : slotY,
+                    name :side+"R"+row+"C"+col,
+                    id : id,
+                    row : row,
+                    col : col
+                }
+                cardSlots[id] = cardSlot;
+                
+                slotX = slotX + cardSlotWidth + hSpaceBetweenCards,
+                id++;
+                col++;
+            } 
+     
+        }
+        
+        function snapCardtoSlot(slotID, card){   
+             clearHighlightedSlot();
+             playerCards[card.number].slotID = slotID;
+             card.x = cardSlots[slotID].x;
+             card.y = cardSlots[slotID].y;
+             game.world.bringToTop(card);
+        }
+        
+
+        function generateRelativeSizes(){
+            cardSlotHeight = 150;
+            cardSlotWidth  = 100;
+            hSpaceBetweenCards = 10;
+            vSpaceBetweenCards = 10;
+            spaceAboveStaging = 60;
+            spaceFromTop = 30;
+            spaceFromBottom = 30;
+
+
+        }
+        
+        function identifyCardSlot(){
+            
+            //NEED TO REWRITE THIS for estetics only.
+            var mouseX = game.input.mousePointer.x;
+            var mouseY = game.input.mousePointer.y;
+                 
+            if (mouseX > cardSlots[0].x && mouseX < cardSlots[0].x +cardSlotWidth) {
+              mouseCol = 1;
+            }else
+            if (mouseX > cardSlots[1].x && mouseX < cardSlots[1].x +cardSlotWidth) {
+              mouseCol = 2;
+            }else
+            if (mouseX > cardSlots[2].x && mouseX < cardSlots[2].x +cardSlotWidth) {
+              mouseCol = 3;
+            }else
+            if (mouseX > cardSlots[3].x && mouseX < cardSlots[3].x +cardSlotWidth) {
+              mouseCol = 4;
+            }else
+            if (mouseX > cardSlots[4].x && mouseX < cardSlots[4].x +cardSlotWidth) {
+              mouseCol = 5;
+            }else{
+              mouseCol = 0;
+            }
+
+            if (mouseY> cardSlots[0].y && mouseY < cardSlots[0].y + cardSlotHeight) {
+              mouseRow = 1;
+            }else
+            if (mouseY > cardSlots[5].y && mouseY< cardSlots[5].y + cardSlotHeight) {
+              mouseRow = 2;
+            }else
+            if (mouseY > cardSlots[10].y && mouseY< cardSlots[10].y + cardSlotHeight) {
+              mouseRow = 3;
+            }else
+            if (mouseY> cardSlots[15].y && mouseY < cardSlots[15].y + cardSlotHeight) {
+              mouseRow = 4;
+            }else
+            if (mouseY> cardSlots[20].y && mouseY < cardSlots[20].y + cardSlotHeight) {
+              mouseRow = 5;
+            }else{
+              mouseRow = 0;
+            }
+
+
+            if (mouseRow != 0 && mouseCol != 0){
+               mouseAtSlot = (mouseRow-1)*5+mouseCol-1;
+            }else{
+               mouseAtSlot = -1;
+            }
+            
+          }
+                 
+        function highlightCardSlot(){
+            
+            if (mouseAtSlot < 0 || mouseAtSlot === null) {
+             return;
+            }
+            
+            var shape = game.add.graphics();
+            
+            //removing highlight from previous slot
+            clearHighlightedSlot(shape);
+            
+            //highlighting current slot
+            shape.lineStyle(5, 0xFF0000, 1);
+            shape.drawRect(cardSlots[mouseAtSlot].x, cardSlots[mouseAtSlot].y, cardSlotWidth, cardSlotHeight);
+            game.world.bringToTop(draggedObject);
+            
+            highlightedSlot = mouseAtSlot;
+        }
+        
+        function clearHighlightedSlot(shape){
+            
+            if(shape == null){
+              var shape = game.add.graphics();
+            }
+            
+            if(highlightedSlot >= 0) {
+             shape.lineStyle(5, 0x000000, 1);
+             shape.drawRect(cardSlots[highlightedSlot].x, cardSlots[highlightedSlot].y, cardSlotWidth, cardSlotHeight);
+            }
+            
+        }
+        
+})();
+
+
+      
+
+ 
+    </script>
+ 
+    </body>
+</html>
